@@ -1702,7 +1702,7 @@ class All(CAReduce):
     specified axis(es).
 
     """
-    __props__ = ("axis")
+    __props__ = ("axis",)
 
     def __init__(self, axis=None):
         CAReduce.__init__(self, scalar.and_, axis)
@@ -1733,7 +1733,7 @@ class Any(CAReduce):
     specified axis(es).
 
     """
-    __props__ = ("axis")
+    __props__ = ("axis", )
 
     def __init__(self, axis=None):
         CAReduce.__init__(self, scalar.or_, axis)
