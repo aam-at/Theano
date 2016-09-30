@@ -471,7 +471,6 @@ second dimension
     | Elemwise(log)(rand(3, 4, 5))
 
     """
-    __props__ = ("scalar_op", "inplace_pattern", "name", "nfunc_spec", "openmp")
 
     def __init__(self, scalar_op, inplace_pattern=None, name=None,
                  nfunc_spec=None, openmp=None):
@@ -1414,17 +1413,6 @@ class CAReduce(Op):
         self.__dict__.update(d)
         self.set_ufunc(self.scalar_op)
 
-    def __eq__(self, other):
-        return (type(self) == type(other) and
-                self.scalar_op == other.scalar_op and
-                self.axis == other.axis)
-
-    def __hash__(self):
-        if self.axis is None:
-            return hash(self.scalar_op)
-        else:
-            return hash(self.scalar_op) ^ hash(tuple(self.axis))
-
     def __str__(self):
         if self.axis is not None:
             return "Reduce{%s}{%s}" % (
@@ -1710,12 +1698,6 @@ class All(CAReduce):
     def _output_dtype(self, idtype):
         return "bool"
 
-    def __str__(self):
-        if self.axis is None:
-            return "All"
-        else:
-            return "All{%s}" % ", ".join(map(str, self.axis))
-
     def make_node(self, input):
         input = as_tensor_variable(input)
         if input.dtype != "bool":
@@ -1740,12 +1722,6 @@ class Any(CAReduce):
 
     def _output_dtype(self, idtype):
         return "bool"
-
-    def __str__(self):
-        if self.axis is None:
-            return "Any"
-        else:
-            return "Any{%s}" % ", ".join(map(str, self.axis))
 
     def make_node(self, input):
         input = as_tensor_variable(input)
@@ -1817,14 +1793,6 @@ class CAReduceDtype(CAReduce):
         CAReduce.__init__(self, scalar_op, axis=axis)
         self.dtype = dtype
         self.acc_dtype = acc_dtype
-
-    def __eq__(self, other):
-        return (CAReduce.__eq__(self, other) and
-                self.dtype == other.dtype and
-                self.acc_dtype == other.acc_dtype)
-
-    def __hash__(self):
-        return CAReduce.__hash__(self) ^ hash((self.dtype, self.acc_dtype))
 
     def __setstate__(self, d):
         super(CAReduceDtype, self).__setstate__(d)
@@ -1978,6 +1946,18 @@ class Sum(CAReduceDtype):
         CAReduceDtype.__init__(self, scalar.add, axis=axis,
                                dtype=dtype, acc_dtype=acc_dtype)
 
+    def __str__(self):
+        name = self.__class__.__name__
+        axis = ""
+        if self.axis is not None:
+            axis = ", ".join(str(x) for x in self.axis)
+            axis = "axis=[%s], " % axis
+        return "%s{%sacc_dtype=%s}" % (
+            name,
+            axis,
+            str(self.acc_dtype)
+        )
+
     def grad(self, inp, grads):
         x, = inp
 
@@ -2035,14 +2015,6 @@ class Prod(CAReduceDtype):
         # Add default value to be able to reload old pickled objects.
         if 'no_zeros_in_input' not in dct:
             self.no_zeros_in_input = False
-
-    def __eq__(self, other):
-        return (CAReduceDtype.__eq__(self, other) and
-                self.no_zeros_in_input == other.no_zeros_in_input)
-
-    def __hash__(self):
-        return (CAReduceDtype.__hash__(self) ^
-                hash(self.no_zeros_in_input))
 
     def grad(self, inp, grads):
         """
