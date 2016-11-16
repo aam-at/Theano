@@ -4608,7 +4608,6 @@ class Canonizer(gof.LocalOptimizer):
         | x * y * z -> ([x, y, z], [])
 
         """
-
         # This function is recursive.  The idea is that there is a
         # get_num_denum recursion in which the internal ops are all
         # one of (main, inverse, reciprocal, DimShuffle) and the
@@ -6340,8 +6339,9 @@ def local_greedy_distributor(node):
         if candidate not in num:
             continue
         num.remove(candidate)
-        _change, candidate, num, denum = attempt_distribution(candidate,
-                                                              num, denum, out_type)
+        _change, candidate, num, denum = attempt_distribution(
+            candidate, num, denum, out_type,)
+
         change |= _change
         new_num.append(candidate)
 
@@ -6349,11 +6349,10 @@ def local_greedy_distributor(node):
         if candidate not in denum:
             continue
         denum.remove(candidate)
-        _change, candidate, denum, num = attempt_distribution(candidate,
-                                                              denum, num, out_type)
+        _change, candidate, denum, num = attempt_distribution(
+            candidate, denum, num, out_type)
         change |= _change
         new_denum.append(candidate)
-
     if not change:
         return False
 
