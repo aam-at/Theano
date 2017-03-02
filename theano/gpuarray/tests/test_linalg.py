@@ -5,13 +5,16 @@ import numpy as np
 import theano
 
 from theano.tests import unittest_tools as utt
-from .config import mode_with_gpu
+from .config import mode_with_gpu, mode_without_gpu
+from .test_basic_ops import rand
+
 
 from numpy.linalg.linalg import LinAlgError
 
 # Skip tests if cuda_ndarray is not available.
 from nose.plugins.skip import SkipTest
-from theano.gpuarray.linalg import (cusolver_available, gpu_solve)
+from theano.gpuarray.linalg import (cusolver_available, gpu_solve, GpuCusolverSVD)
+from theano.tensor.nlinalg import SVD
 
 if not cusolver_available:
     raise SkipTest('Optional package scikits.cuda.cusolver not available')
@@ -112,3 +115,17 @@ class TestCusolver(unittest.TestCase):
 
         fn = theano.function([A, b], [solver], mode=mode_with_gpu)
         self.assertRaises(LinAlgError, fn, A_val, x_val)
+
+    def test_linalg_svd(self):
+        test_shapes = [(5, 5), (10, 10), (10, 10), (20, 20), (50, 50)]
+
+        svd_op = SVD()
+        for shp in test_shapes:
+            A_v = rand(*shp)
+            A = theano.shared(A_v, 'A')
+            f = theano.function([], svd_op(A), mode=mode_with_gpu)
+            assert any([isinstance(node.op, GpuCusolverSVD)
+                        for node in f.maker.fgraph.toposort()])
+            u, s, v = f()
+            A_ = np.dot(v, np.dot(np.diag(s), u))
+            assert np.allclose(A_v, A_, 1e-3)

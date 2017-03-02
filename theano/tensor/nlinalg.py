@@ -639,7 +639,7 @@ def svd(a, full_matrices=1, compute_uv=1):
 
     Returns
     -------
-    U, V,  D : matrices
+    U, V, D : matrices
 
     """
     return SVD(full_matrices, compute_uv)(a)

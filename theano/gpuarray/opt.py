@@ -32,6 +32,7 @@ from theano.tensor.nnet.abstract_conv import (BaseAbstractConv,
                                               AbstractConv3d,
                                               AbstractConv3d_gradWeights,
                                               AbstractConv3d_gradInputs)
+import theano.tensor.nlinalg as nlinalg
 import theano.tensor.signal.pool as pool
 import theano.tensor.slinalg as slinalg
 
@@ -72,7 +73,7 @@ from .subtensor import (GpuIncSubtensor, GpuSubtensor,
                         GpuAdvancedIncSubtensor1_dev20)
 from .opt_util import alpha_merge, output_merge, pad_dims, unpad_dims
 from .reduction import GpuMaxAndArgmax
-from .linalg import (GpuCusolverSolve, cusolver_available)
+from .linalg import (GpuCusolverSolve, cusolver_available, GpuCusolverSVD)
 
 _logger = logging.getLogger("theano.gpuarray.opt")
 
@@ -1961,6 +1962,21 @@ def local_gpu_solve(op, context_name, inputs, outputs):
     if not cusolver_available:
         return
     return GpuCusolverSolve()
+
+
+@register_opt('fast_compile')
+@op_lifter([nlinalg.SVD])
+@register_opt2([theano.tensor.nlinalg.SVD], 'fast_compile')
+def local_gpu_svd(op, context_name, inputs, outputs):
+    if not cusolver_available:
+        return
+
+    full_matrices = op.full_matrices
+    compute_uv = op.compute_uv
+    if not full_matrices or not compute_uv:
+        return
+    return GpuCusolverSVD(full_matrices, compute_uv)
+
 
 # Do not register in fast_run or fast_compile.
 # It will be added to fast_run if the GPU is enabled.
