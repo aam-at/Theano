@@ -218,6 +218,8 @@ class GpuCusolverSVD(Op):
     __props__ = ('full_matrices', 'compute_uv')
 
     def __init__(self, full_matrices=True, compute_uv=True):
+        if not full_matrices or not compute_uv:
+            raise ValueError("CUSOLVER only supports jobu = jobvt = 'A'")
         self.full_matrices = full_matrices
         self.compute_uv = compute_uv
 
@@ -225,13 +227,12 @@ class GpuCusolverSVD(Op):
         if not cusolver_available:
             raise RuntimeError('CUSOLVER is not available and '
                                'GpuCusolverSolve Op can not be constructed.')
-        if not self.full_matrices or not self.compute_uv:
-            raise ValueError("CUSOLVER only supports jobu = jobvt = 'A'")
 
         context_name = infer_context_name(A)
         A = as_gpuarray_variable(A, context_name)
         assert A.ndim == 2, "The input of svd function should be a matrix."
-        assert A.dtype == 'float32'
+        assert A.dtype in ['float32', 'float64'], \
+            "CUSOLVER supports only single or double precision"
 
         return Apply(self, [A], [A.type(),
                                  GpuArrayType(A.dtype, broadcastable=[False],
@@ -247,19 +248,31 @@ class GpuCusolverSVD(Op):
 
     def perform(self, node, inputs, outputs):
         ctx = inputs[0][0].context
-        x = inputs[0]
+        x, = inputs
         data_type = x.dtype
         assert len(x.shape) == 2
-        m, n = x.shape
-        u, s, v = outputs
+        n, m = x.shape
+        if m < n:
+            raise LinAlgError('CUSOLVER supports only m <= n')
+
+        if data_type == 'float32':
+            svd_buffer_size = cusolver.cusolverDnSgesvd_bufferSize
+            svd = cusolver.cusolverDnSgesvd
+        elif data_type == 'float64':
+            svd_buffer_size = cusolver.cusolverDnDgesvd_bufferSize
+            svd = cusolver.cusolverDnDgesvd
+        else:
+            raise RuntimeError("CUSOLVER supports only single"
+                               "and double precision")
+        u, s, vh = outputs
 
         # allocate output arrays
         s_gpu = pygpu.empty(min(m, n), dtype=data_type, context=ctx)
-        u_gpu = pygpu.empty((m, m), dtype=data_type, context=ctx)
-        vh_gpu = pygpu.empty((n, n), dtype=data_type, context=ctx)
+        u_gpu = pygpu.empty((n, n), dtype=data_type, context=ctx)
+        vh_gpu = pygpu.empty((m, m), dtype=data_type, context=ctx)
 
         with ctx:
-            workspace_size = cusolver.cusolverDnSgesvd_bufferSize(
+            workspace_size = svd_buffer_size(
                 ctx.cusolver_handle, m, n)
         workspace = pygpu.zeros(workspace_size, dtype=x.dtype, context=ctx)
         dev_info = pygpu.zeros((1,), dtype='int32', context=ctx)
@@ -267,19 +280,19 @@ class GpuCusolverSVD(Op):
         # call cusolverDnSgesvd using scikit-cuda
         x_ptr = x.gpudata
         s_ptr = s_gpu.gpudata
-        u_ptr = u_gpu.gpudata
         vh_ptr = vh_gpu.gpudata
+        u_ptr = u_gpu.gpudata
         workspace_ptr = workspace.gpudata
         dev_info_ptr = dev_info.gpudata
 
         with ctx:
-            cusolver.cusolverDnSgesvd(ctx.cusolver_handle, 'A', 'A', m, n,
-                                      x_ptr, m, s_ptr, u_ptr, m, vh_ptr, n,
-                                      workspace_ptr, workspace_size, 0, dev_info_ptr)
+            svd(ctx.cusolver_handle, 'A', 'A', m, n,
+                x_ptr, m, s_ptr, vh_ptr, m, u_ptr, n,
+                workspace_ptr, workspace_size, 0, dev_info_ptr)
             if np.asarray(dev_info[0]) > 0:
                 raise LinAlgError('SVD did not converge')
 
-        u[0], s[0], v[0] = u_gpu, s_gpu, vh_gpu
+        u[0], s[0], vh[0] = u_gpu, s_gpu, vh_gpu
 
 
 def gpu_svd(A, full_matrices=1, compute_uv=1):

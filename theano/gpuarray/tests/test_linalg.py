@@ -117,15 +117,32 @@ class TestCusolver(unittest.TestCase):
         self.assertRaises(LinAlgError, fn, A_val, x_val)
 
     def test_linalg_svd(self):
-        test_shapes = [(5, 5), (10, 10), (10, 10), (20, 20), (50, 50)]
+        test_shapes = [(5, 5), (5, 7), (10, 10), (10, 15), (20, 20),
+                       (20, 30), (50, 50), (50, 75)]
 
         svd_op = SVD()
         for shp in test_shapes:
             A_v = rand(*shp)
             A = theano.shared(A_v, 'A')
-            f = theano.function([], svd_op(A), mode=mode_with_gpu)
-            assert any([isinstance(node.op, GpuCusolverSVD)
+            f = theano.function([], svd_op(A), mode=mode_without_gpu)
+            f2 = theano.function([], svd_op(A), mode=mode_with_gpu)
+            assert any([isinstance(node.op, SVD)
                         for node in f.maker.fgraph.toposort()])
-            u, s, v = f()
-            A_ = np.dot(v, np.dot(np.diag(s), u))
-            assert np.allclose(A_v, A_, 1e-3)
+            assert any([isinstance(node.op, GpuCusolverSVD)
+                        for node in f2.maker.fgraph.toposort()])
+            u, s, vh = f()
+            u2, s2, vh2 = f2()
+            # svd is ambiguous with signs
+            assert np.allclose(np.abs(u), np.abs(u2), atol=1e-3)
+            assert np.allclose(np.abs(vh), np.abs(vh2), atol=1e-3)
+            assert np.allclose(s, s2, atol=1e-3)
+
+    def test_linalgerr_svd(self):
+        with self.assertRaises(ValueError):
+            GpuCusolverSVD(full_matrices=False, compute_uv=True)
+        with self.assertRaises(ValueError):
+            GpuCusolverSVD(full_matrices=True, compute_uv=False)
+        with self.assertRaises(LinAlgError):
+            A = theano.shared(rand(3, 2), 'A')
+            f = theano.function([], SVD()(A), mode=mode_with_gpu)
+            f()
