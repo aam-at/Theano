@@ -253,7 +253,13 @@ class GpuCusolverSVD(Op):
         assert len(x.shape) == 2
         n, m = x.shape
         if m < n:
-            raise LinAlgError('CUSOLVER supports only m <= n')
+            # 'CUSOLVER supports only m <= n'
+            # compute SVD of the transpose
+            x = pygpu.ascontiguousarray(x.transpose())
+            n, m = x.shape
+            transpose = True
+        else:
+            transpose = False
 
         if data_type == 'float32':
             svd_buffer_size = cusolver.cusolverDnSgesvd_bufferSize
@@ -292,7 +298,12 @@ class GpuCusolverSVD(Op):
             if np.asarray(dev_info[0]) > 0:
                 raise LinAlgError('SVD did not converge')
 
-        u[0], s[0], vh[0] = u_gpu, s_gpu, vh_gpu
+        if transpose:
+            u[0] = pygpu.ascontiguousarray(vh_gpu.transpose())
+            s[0] = s_gpu
+            vh[0] = pygpu.ascontiguousarray(u_gpu.transpose())
+        else:
+            u[0], s[0], vh[0] = u_gpu, s_gpu, vh_gpu
 
 
 def gpu_svd(A, full_matrices=1, compute_uv=1):

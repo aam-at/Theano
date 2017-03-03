@@ -117,8 +117,8 @@ class TestCusolver(unittest.TestCase):
         self.assertRaises(LinAlgError, fn, A_val, x_val)
 
     def test_linalg_svd(self):
-        test_shapes = [(5, 5), (5, 7), (10, 10), (10, 15), (20, 20),
-                       (20, 30), (50, 50), (50, 75)]
+        test_shapes = [(5, 5), (5, 7), (7, 5), (10, 10), (10, 15), (15, 10),
+                       (20, 20), (20, 30), (30, 20), (50, 50)]
 
         svd_op = SVD()
         for shp in test_shapes:
@@ -142,7 +142,3 @@ class TestCusolver(unittest.TestCase):
             GpuCusolverSVD(full_matrices=False, compute_uv=True)
         with self.assertRaises(ValueError):
             GpuCusolverSVD(full_matrices=True, compute_uv=False)
-        with self.assertRaises(LinAlgError):
-            A = theano.shared(rand(3, 2), 'A')
-            f = theano.function([], SVD()(A), mode=mode_with_gpu)
-            f()
